@@ -1,0 +1,162 @@
+# ============================================================
+#  TRUMA Combi 6D - Controllo via LIN bus con M5Stack NanoC6
+#  Transceiver: TJA1020 (TTL UART <-> LIN)
+#  Per Home Assistant via ESPHome
+#  Basato sul componente di Fabian-Schmidt (esphome-truma_inetbox)
+# ============================================================
+#
+#  ⚠️ BOZZA SPERIMENTALE - DA TESTARE CON LA iNet X ⚠️
+#  Questo componente e' testato sulla Truma CP Plus.
+#  La compatibilita' con la iNet X NON e' garantita.
+#  Procederemo in LETTURA prima, senza inviare comandi.
+#
+# ============================================================
+#  COLLEGAMENTO HARDWARE (da fare con calma e multimetro)
+# ============================================================
+#
+#  NanoC6 (Grove)          TJA1020            Truma iNet X
+#  --------------          -------            ------------
+#  GPIO1 (TX) ---------->  TXD (pin TX)
+#  GPIO2 (RX) <----------  RXD (pin RX)
+#  GND        ----------   GND        ------  GND (RJ12)
+#                          LIN        ------  LIN (RJ12)
+#
+#  ⚡ ALIMENTAZIONE:
+#  - Il NanoC6 si alimenta via USB-C (5V) o dal pin 5V Grove
+#  - Il TJA1020 va alimentato a 12V dall'impianto del van
+#  - ATTENZIONE: sul RJ12 LIN NON c'e' il 12V!
+#    L'alimentazione del TJA1020 va presa separatamente.
+#
+#  📌 PRIMA DI COLLEGARE: misura col multimetro i pin del
+#     connettore RJ12 della Truma per identificare LIN e GND.
+#
+# ============================================================
+#  ISTRUZIONI SOFTWARE:
+#  1. In ESPHome: New Device -> nome "truma" -> ESP32-C6
+#  2. Edit -> incolla questo file
+#  3. Verifica i pin UART (GPIO1/GPIO2) col Grove del NanoC6
+#  4. Install
+#  5. Controlla il sensore "Truma alive": se diventa attivo,
+#     la iNet X sta comunicando! 🎉
+# ============================================================
+
+substitutions:
+  device_name: truma
+  friendly_name: "Truma"
+  # Pin UART del connettore Grove sul NanoC6
+  uart_tx_pin: GPIO1
+  uart_rx_pin: GPIO2
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-c6-devkitc-1
+  framework:
+    type: esp-idf
+
+logger:
+  # Livello DEBUG per vedere il traffico LIN durante i test
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+    - ssid: !secret wifi_ssid_casa
+      password: !secret wifi_password_casa
+  ap:
+    ssid: "Truma Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+# ============================================================
+#  Componente Truma iNetbox (Fabian-Schmidt)
+# ============================================================
+external_components:
+  - source: github://Fabian-Schmidt/esphome-truma_inetbox
+    components: ["truma_inetbox"]
+
+# UART verso il TJA1020
+uart:
+  - id: lin_uart_bus
+    tx_pin: ${uart_tx_pin}
+    rx_pin: ${uart_rx_pin}
+    baud_rate: 9600
+    stop_bits: 2
+
+truma_inetbox:
+  uart_id: lin_uart_bus
+
+# ============================================================
+#  SENSORI DI LETTURA (sola lettura - sicuri da testare)
+# ============================================================
+
+# Il sensore piu' importante: ci dice se la Truma comunica!
+binary_sensor:
+  - platform: truma_inetbox
+    name: "Truma alive"
+    type: CP_PLUS_CONNECTED
+
+sensor:
+  - platform: truma_inetbox
+    name: "Temperatura Ambiente Attuale"
+    type: CURRENT_ROOM_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Temperatura Acqua Attuale"
+    type: CURRENT_WATER_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Temperatura Ambiente Target"
+    type: TARGET_ROOM_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Temperatura Acqua Target"
+    type: TARGET_WATER_TEMPERATURE
+
+# ============================================================
+#  CONTROLLI (commentati per ora - attivare solo DOPO
+#  aver verificato che la lettura funziona!)
+# ============================================================
+#
+# climate:
+#   - platform: truma_inetbox
+#     name: "Truma Riscaldamento"
+#     type: ROOM
+#   - platform: truma_inetbox
+#     name: "Truma Boiler"
+#     type: WATER
+#
+# number:
+#   - platform: truma_inetbox
+#     name: "Target Temperatura Ambiente"
+#     type: TARGET_ROOM_TEMPERATURE
+#
+# select:
+#   - platform: truma_inetbox
+#     name: "Modalita Ventola"
+#     type: HEATER_FAN_MODE_COMBI
+
+# LED RGB di stato del NanoC6
+light:
+  - platform: esp32_rmt_led_strip
+    name: "LED Stato"
+    id: status_led
+    pin: GPIO20
+    num_leds: 1
+    rgb_order: GRB
+    chipset: ws2812
+    default_transition_length: 0s
+
+# Sincronizza l'orologio della Truma con HA (utile per il timer)
+time:
+  - platform: homeassistant
+    id: homeassistant_time

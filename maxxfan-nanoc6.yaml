@@ -1,0 +1,166 @@
+# ============================================================
+#  MaxxFan Deluxe - Controllo IR con M5Stack NanoC6
+#  Per Home Assistant via ESPHome
+#  Basato sul progetto open-source Smarty Van
+# ============================================================
+#
+#  ISTRUZIONI:
+#  1. Quando arriva il NanoC6, collegalo via USB-C al PC
+#  2. In ESPHome clicca "New Device" -> dai il nome "maxxfan"
+#  3. Scegli "ESP32-C6" come tipo di scheda
+#  4. Dopo la creazione, clicca EDIT sul dispositivo
+#  5. Cancella tutto e incolla QUESTO file
+#  6. Verifica il pin IR (vedi nota sotto) e clicca INSTALL
+#
+#  NOTA IMPORTANTE SUL PIN IR:
+#  Il LED IR integrato del NanoC6 e' su GPIO3.
+#  Se non funziona, proveremo altri pin insieme.
+# ============================================================
+
+substitutions:
+  device_name: maxxfan
+  friendly_name: "MaxxFan"
+  # Pin del LED infrarosso integrato del NanoC6
+  ir_tx_pin: GPIO3
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-c6-devkitc-1
+  framework:
+    type: esp-idf
+
+# Abilita logging
+logger:
+
+# Abilita API per Home Assistant
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+# Aggiornamenti Over-The-Air (senza cavo)
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  # Reti multiple: si collega a quella disponibile
+  # (rete del van quando in viaggio, rete di casa quando parcheggiato)
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+    - ssid: !secret wifi_ssid_casa
+      password: !secret wifi_password_casa
+  # Hotspot di emergenza se nessun WiFi e' raggiungibile
+  ap:
+    ssid: "MaxxFan Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+# ============================================================
+#  Componente protocollo MaxxFan (Smarty Van / brown-studios)
+# ============================================================
+external_components:
+  - source: github://brown-studios/esphome-maxxfan-protocol@main
+    components: [maxxfan_protocol]
+
+maxxfan_protocol:
+
+# Trasmettitore IR
+remote_transmitter:
+  - id: ir_transmitter
+    pin:
+      number: ${ir_tx_pin}
+    carrier_duty_percent: 50%
+
+# ============================================================
+#  ENTITA' IN HOME ASSISTANT
+# ============================================================
+
+# Ventola principale - 10 velocita' + direzione
+fan:
+  - platform: template
+    name: "Ventola"
+    id: maxxfan_fan
+    speed_count: 10
+    has_direction: true
+    on_turn_on:
+      - script.execute: send_state
+    on_turn_off:
+      - script.execute: send_state
+    on_speed_set:
+      - script.execute: send_state
+    on_direction_set:
+      - script.execute: send_state
+
+# Cupola apri/chiudi
+cover:
+  - platform: template
+    name: "Cupola"
+    id: maxxfan_cover
+    optimistic: true
+    on_open:
+      - script.execute: send_state
+    on_closed:
+      - script.execute: send_state
+
+# Modalita' automatica (termostato)
+switch:
+  - platform: template
+    name: "Modalita Auto"
+    id: maxxfan_auto
+    optimistic: true
+    on_turn_on:
+      - script.execute: send_state
+    on_turn_off:
+      - script.execute: send_state
+
+# Temperatura target per modalita' auto
+number:
+  - platform: template
+    name: "Temperatura Auto"
+    id: maxxfan_temp
+    optimistic: true
+    min_value: 0
+    max_value: 50
+    initial_value: 22
+    step: 1
+    unit_of_measurement: "°C"
+    on_value:
+      - script.execute: send_state
+
+# ============================================================
+#  SCRIPT che invia il comando IR completo al fan
+# ============================================================
+script:
+  - id: send_state
+    then:
+      - lambda: |-
+          // Converte la temperatura da Celsius a Fahrenheit (il fan usa F)
+          int temp_f = (int)(id(maxxfan_temp).state * 9.0 / 5.0 + 32);
+
+          auto call = id(ir_transmitter);
+          ESP_LOGD("maxxfan", "Invio stato al MaxxFan");
+      - remote_transmitter.transmit_maxxfan:
+          transmitter_id: ir_transmitter
+          fan_on: !lambda 'return id(maxxfan_fan).state;'
+          # FORWARD = estrazione aria (AIR OUT), REVERSE = immissione (AIR IN)
+          fan_exhaust: !lambda 'return id(maxxfan_fan).direction == FanDirection::FORWARD;'
+          fan_speed: !lambda 'return (int)(id(maxxfan_fan).speed);'
+          cover_open: !lambda 'return id(maxxfan_cover).position > 0.5;'
+          auto_mode: !lambda 'return id(maxxfan_auto).state;'
+          auto_temperature: !lambda 'return (int)(id(maxxfan_temp).state * 9.0 / 5.0 + 32);'
+
+# LED RGB di stato (opzionale - segnala connessione)
+light:
+  - platform: esp32_rmt_led_strip
+    name: "LED Stato"
+    id: status_led
+    pin: GPIO20
+    num_leds: 1
+    rgb_order: GRB
+    chipset: ws2812
+    default_transition_length: 0s

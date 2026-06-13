@@ -1,0 +1,295 @@
+# ============================================================
+#  GENIUS_VAN - Dashboard Home Assistant
+#  Stile cruscotto scuro con gauge, badge, meteo e mappa
+# ============================================================
+#
+#  COME USARLO:
+#  1. Crea una nuova plancia in HA
+#  2. Tre puntini -> Modifica configurazione RAW / Editor testuale
+#  3. Incolla questo contenuto
+#  4. Adatta i nomi delle entita' al tuo impianto
+#     (i suffissi _2 dipendono dalla tua integrazione Victron MQTT)
+# ============================================================
+
+views:
+  - title: Van
+    icon: mdi:rv-truck
+    type: sections
+    max_columns: 4
+    badges:
+      - type: entity
+        entity: sensor.smartshunt_300a_id_290_dc_bus_voltage_2
+        color: amber
+      - type: entity
+        entity: sensor.smartshunt_300a_id_290_power_2
+        color: blue
+      - type: entity
+        entity: sensor.temperatura_interno
+        color: red
+      - type: entity
+        entity: sensor.temperatura_esterno
+        color: light-blue
+      - type: entity
+        entity: sensor.autonomia_batteria
+        color: purple
+    sections:
+      # --- Allerta meteo (appare solo se attiva) ---
+      - type: grid
+        cards:
+          - type: conditional
+            conditions:
+              - entity: binary_sensor.meteoalarm
+                state: "on"
+            card:
+              type: markdown
+              content: >
+                ## ⚠️ ALLERTA METEO
+
+                **{{ state_attr('binary_sensor.meteoalarm', 'headline') }}**
+
+                {{ state_attr('binary_sensor.meteoalarm', 'description') }}
+            grid_options:
+              columns: 12
+      # --- Energia ---
+      - type: grid
+        cards:
+          - type: heading
+            heading: ⚡ Energia
+          - type: gauge
+            entity: sensor.smartshunt_300a_id_290_charge_2
+            name: Batteria
+            min: 0
+            max: 100
+            needle: false
+            severity:
+              green: 50
+              yellow: 25
+              red: 0
+            grid_options:
+              columns: 6
+          - type: gauge
+            entity: sensor.smartsolar_charger_mppt_75_15_rev2_id_291_pv_yield_power_2
+            name: Solare
+            min: 0
+            max: 220
+            grid_options:
+              columns: 6
+          - type: tile
+            entity: sensor.smartshunt_300a_id_290_power_2
+            name: Potenza
+            icon: mdi:lightning-bolt
+            color: blue
+          - type: tile
+            entity: sensor.autonomia_batteria
+            name: Autonomia
+            icon: mdi:clock-outline
+            color: purple
+          - type: tile
+            entity: sensor.multiplus_12_2000_80_32_id_288_state_2
+            name: MultiPlus
+            icon: mdi:power-plug
+            color: teal
+          - type: tile
+            entity: sensor.ac_tensione
+            name: AC IN
+            icon: mdi:transmission-tower
+            color: cyan
+          - type: custom:mini-graph-card
+            name: Carica Batteria 24H
+            entities:
+              - entity: sensor.smartshunt_300a_id_290_charge_2
+                name: "%"
+            hours_to_show: 24
+            line_color: "#4ade80"
+            line_width: 3
+            font_size: 75
+            show:
+              labels: true
+              points: false
+              legend: false
+            grid_options:
+              columns: 12
+      # --- Temperature ---
+      - type: grid
+        cards:
+          - type: heading
+            heading: 🌡️ Temperature
+          - type: gauge
+            entity: sensor.temperatura_frigo
+            name: Frigo
+            min: -5
+            max: 15
+            needle: true
+            severity:
+              green: 0
+              yellow: 8
+              red: 10
+            grid_options:
+              columns: 6
+          - type: gauge
+            entity: sensor.temperatura_freezer
+            name: Freezer
+            min: -25
+            max: 5
+            needle: true
+            severity:
+              green: -25
+              yellow: -10
+              red: 0
+            grid_options:
+              columns: 6
+          - type: tile
+            entity: sensor.temperatura_interno
+            name: Interno
+            icon: mdi:home-thermometer
+            color: red
+          - type: tile
+            entity: sensor.temperatura_esterno
+            name: Esterno
+            icon: mdi:thermometer-low
+            color: light-blue
+      # --- Controlli rapidi ---
+      - type: grid
+        cards:
+          - type: heading
+            heading: 🔀 Controlli
+          - type: tile
+            entity: switch.valvola_scarico_grigie_state_2
+            name: Scarico Grigie
+            icon: mdi:pipe-valve
+            color: orange
+          - type: tile
+            entity: switch.gx_internal_relay_6_state_2
+            name: Starlink
+            icon: mdi:satellite-uplink
+            color: green
+          - type: tile
+            entity: switch.gx_internal_relay_3_state_2
+            name: Router 5G
+            icon: mdi:router-wireless
+            color: blue
+          - type: tile
+            entity: switch.gx_internal_relay_4_state_2
+            name: Compressore
+            icon: mdi:air-compressor
+            color: amber
+          - type: tile
+            entity: switch.gx_internal_relay_5_state_2
+            name: Camera Scarico
+            icon: mdi:camera
+            color: purple
+          - type: tile
+            entity: switch.gx_internal_relay_1_state_2
+            name: Ventole RPi
+            icon: mdi:fan
+            color: cyan
+      # --- Meteo ---
+      - type: grid
+        cards:
+          - type: heading
+            heading: 🌤️ Meteo
+          - type: weather-forecast
+            entity: weather.geniusvan
+            forecast_type: daily
+            grid_options:
+              columns: 12
+      # --- Posizione ---
+      - type: grid
+        cards:
+          - type: heading
+            heading: 📍 Posizione
+          - type: map
+            entities:
+              - entity: device_tracker.nmea_0183_gps_acm0_location
+            hours_to_show: 24
+            default_zoom: 12
+            grid_options:
+              columns: 12
+              rows: 6
+
+  # ============================================================
+  #  VISTA CONTROLLI DETTAGLIATI
+  # ============================================================
+  - title: Controlli
+    icon: mdi:tune
+    cards:
+      - type: custom:bubble-card
+        card_type: separator
+        name: "⚡ MultiPlus"
+      - type: custom:bubble-card
+        card_type: select
+        entity: select.multiplus_12_2000_80_32_id_288_2
+        name: Modalità operativa
+        icon: mdi:power-settings
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.multiplus_12_2000_80_32_id_288_0_powerassist_enabled_2
+        name: PowerAssist
+        icon: mdi:lightning-bolt
+        show_state: true
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.multiplus_12_2000_80_32_id_288_control_ignore_ac_in_1_2
+        name: Ignora AC Input
+        icon: mdi:power-plug-off
+        show_state: true
+      - type: entities
+        title: "🎛️ Regolazioni MultiPlus"
+        entities:
+          - entity: number.multiplus_12_2000_80_32_id_288_current_limit_2
+            name: Limite corrente AC (A)
+          - entity: number.multiplus_12_2000_80_32_id_288_assist_current_boost_factor_2
+            name: PowerAssist Boost Factor
+      - type: custom:bubble-card
+        card_type: separator
+        name: "🔌 Orion XS DC/DC"
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.orion_xs_hq2420cckuw_2
+        name: Orion XS
+        icon: mdi:car-battery
+        show_state: true
+      - type: entities
+        title: "🎛️ Regolazioni Orion"
+        entities:
+          - entity: number.orion_xs_hq2420cckuw_charge_current_limit_2
+            name: Limite corrente carica (A)
+      - type: custom:bubble-card
+        card_type: separator
+        name: "🔀 Relè GX"
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.valvola_scarico_grigie_state_2
+        name: Valvola Scarico Grigie
+        icon: mdi:pipe-valve
+        show_state: true
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.gx_internal_relay_1_state_2
+        name: Ventole Raspberry
+        icon: mdi:fan
+        show_state: true
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.gx_internal_relay_3_state_2
+        name: Router 5G
+        icon: mdi:router-wireless
+        show_state: true
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.gx_internal_relay_4_state_2
+        name: Compressore Aria
+        icon: mdi:air-compressor
+        show_state: true
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.gx_internal_relay_5_state_2
+        name: Camera Scarico
+        icon: mdi:camera
+        show_state: true
+      - type: custom:bubble-card
+        card_type: button
+        entity: switch.gx_internal_relay_6_state_2
+        name: Starlink
+        icon: mdi:satellite-uplink
+        show_state: true
